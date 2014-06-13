@@ -146,7 +146,7 @@ class SockSelect {
 	
 	function listen_ssl ($listen, $pem) {
 		global $confItems, $file, $opMode, $Mline, $protofunc, $mods, $callbacks, $socket;
-		$opt = array("ssl" => array("local_cert" => $pem
+		$opt = array("ssl" => array("local_cert" => $pem,
 		                            "capture_peer_cert" => 1));
 		$opts = stream_context_create($opt);
 		$fd = stream_socket_server("ssl://".$listen,$err,$errs,STREAM_SERVER_BIND|STREAM_SERVER_LISTEN,$opts);
