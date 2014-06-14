@@ -127,7 +127,9 @@ foreach ($conf["modules"] as $mod => $arg) {
 	$mods[$mod] = new $mod($arg);
 }
 $socket = new SockSelect();
+global $by;
+$by = new by();
 
 while (true) $socket->loop();
 
-$mods["me"] = new aServer($conf["me"]["name"],$conf["me"]["numeric"],NULL,0);
+$by->addlocalfd(0,new aClient(microtime(true), $conf["me"]["numeric"], NULL, new aServer($conf["me"]["name"],$conf["me"]["numeric"],NULL,0)));

@@ -81,11 +81,7 @@ class SockSelect {
 		stream_select($lis, $r = NULL, $e = NULL, 0, 20000);
 		foreach ($lis as $soc) $this->accept($soc);
 		$r = $w = $e = $GLOBALS["mods"]["%socket%"];
-		if (!isset($r[0])) {
-			usleep(40000);
-			return;
-		}
-		stream_select($r, $w, $e, 0, 2000);
+		@stream_select($r, $w, $e, 0, 2000);
 		foreach ($r as $fi) call_user_func(array($this,"do_read"),$fi);
 		foreach ($w as $fi) call_user_func(array($this,"do_write"),$fi);
 		foreach ($e as $fi) {
@@ -146,8 +142,7 @@ class SockSelect {
 	
 	function listen_ssl ($listen, $pem) {
 		global $confItems, $file, $opMode, $Mline, $protofunc, $mods, $callbacks, $socket;
-		$opt = array("ssl" => array("local_cert" => $pem,
-		                            "capture_peer_cert" => 1));
+		$opt = array("ssl" => array("local_cert" => $pem, "capture_peer_cert" => 1));
 		$opts = stream_context_create($opt);
 		$fd = stream_socket_server("ssl://".$listen,$err,$errs,STREAM_SERVER_BIND|STREAM_SERVER_LISTEN,$opts);
 		return $fd;

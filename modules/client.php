@@ -43,7 +43,8 @@ class client {
 				"isupport"=>array(
 					"MINPROTOVER"=>"1000/RFC1459", "MAXPROTOVER"=>"1001/JSON"
 				),
-				"motd"=>$motd
+				"motd"=>$motd,
+				"yourcert"=>GetCert($fd)
 			);
 			$this->sendto_one($fd,$data);
 			// Handle the new case first.
@@ -64,14 +65,15 @@ class client {
 	
 	function p($fd,$data) {
 		$protocolver = ($data[0] == "{")?1:0;
-		if (!$protocolver) $this->jsondown($fd);
-		$data = oldParse($data);
-		if ($data[0] == "{") $data = protocolParse($data);
+		if (!$protocolver) {
+			$this->jsondown($fd);
+			$data = oldParse($data);
+		}
+		if ($protocolver) $data = protocolParse($data);
 		$data["__protover"] = $protocolver; //Serves the client right if they use magic keys
-		
+		if (isset($data[0])) $data["cmd"] = $data[0]; // The user can specify 0: rather than "cmd":;
+		// this is not a problem except for the user (protoctl messages)
 		if ($GLOBALS["mods"]["%fdtype%"][(int)$fd] & TYPE_UNREGISTERED) {
-			if (isset($data[0])) $data["cmd"] = $data[0]; // The user can specify 0: rather than "cmd":;
-			// this is not a problem except for the user (protoctl messages)
 			switch ($data["cmd"]) {
 				case "USER":
 					$this->m_introduce($fd,$data);
@@ -103,6 +105,11 @@ class client {
 		}
 		
 		if ($GLOBALS["mods"]["%fdtype%"][(int)$fd] & TYPE_SERVER) {
+			switch ($data["cmd"]) {
+				case "CLIENT":
+					$this->ms_client($fd,$data);
+					break;
+			}
 		} 
 	}
 	
@@ -132,7 +139,7 @@ class client {
 		// $protover is a bitmask of PROTOCTL flags
 		if ($protover & TYPE_JSON) {
 			$this->jsonup($fd);
-			$this->legacy_sendto_one($fd,$GLOBALS["conf"]["me"]["name"],"PROTOCTL",array($protover),"JSON protocol enabled. Go ahead with USER message. If you are not capable of sending JSON protocol but you can understand it, most commands will accept the old format (COMMAND ARGS :PAYLOAD)");
+			$this->legacy_sendto_one($fd,$GLOBALS["conf"]["me"]["name"],"PROTOCTL",array($protover),"JSON protocol enabled. Go ahead with USER message.");
 		}
 	}
 	
@@ -152,37 +159,44 @@ class client {
 		// $protover is a bitmask of PROTOCTL flags
 		if ($protover & TYPE_JSON) {
 			$this->jsonup($fd);
-			$this->legacy_sendto_one($fd,$GLOBALS["conf"]["me"]["name"],"PROTOCTL",array($protover),"JSON protocol enabled. Go ahead with USER message. If you are not capable of sending JSON protocol but you can understand it, most commands will accept the old format (COMMAND ARGS :PAYLOAD)");
+			$this->legacy_sendto_one($fd,$GLOBALS["conf"]["me"]["name"],"PROTOCTL",array($protover),"JSON protocol enabled. Go ahead with JSON protocol use.");
 		}
 	}
 	
 	function m_introduce($fd,$d) {
 		$m = $d["__protover"];
+		global $state, $by;
 		$sockname = $GLOBALS["mods"]["%sockname%"][(int)$fd];
 		$send = array();
 		if (!washclinick($d[($m)?"nick":0])) return; // Let's not warn :P
 		$send["cmd"] = "CLIENT";
-		$send["ts"] = $GLOBALS["state"]["%clients%"]["local"][(int)$fd]["ts"] = microtime(true);
-		$send["nick"] = $GLOBALS["state"]["%clients%"]["local"][(int)$fd]["nick"] = $d[($m)?"nick":0];
-		$send["ident"] = $GLOBALS["state"]["%clients%"]["local"][(int)$fd]["ident"] = $d[($m)?"ident":1];
-		$send["host"] = $GLOBALS["state"]["%clients%"]["local"][(int)$fd]["host"] = $sockname;
-		$send["num"] = $GLOBALS["state"]["%clients%"]["local"][(int)$fd]["num"] = (int)$fd;
-		$send["server"] = $GLOBALS["state"]["%clients%"]["local"][(int)$fd]["server"] = $GLOBALS["conf"]["me"]["numeric"];
+		$send["ts"]  = microtime(true);
+		$send["nick"] = $d[($m)?"nick":0];
+		$send["ident"] = $d[($m)?"ident":1];
+		$send["host"] = $sockname;
+		$send["num"] = (int)$fd;
+		$data["uplink"] = $by->fd[0];
+		$send["uplink"] = $by->fd[0]->server->name;
 		$this->sendto_all_type(TYPE_OPER|TYPE_SERVER,$send);
 		$this->userreg($fd);
 	}
 	
-	function ms_introduce($fd,$d) {
-		$sockname = $GLOBALS["mods"]["%sockname%"][(int)$fd];
+	function ms_client($fd,$d) {
+		global $state;
 		$send = array();
 		if (!washservnick($d["nick"])) return; // Let's not warn :P
 		$send["cmd"] = "CLIENT";
-		$send["ts"] = $GLOBALS["state"]["%servers%"]["local"][(int)$fd]["ts"] = microtime(true);
-		$send["nick"] = $GLOBALS["state"]["%servers%"]["local"][(int)$fd]["nick"] = $d["nick"];
-		$send["ident"] = $GLOBALS["state"]["%servers%"]["local"][(int)$fd]["ident"] = $d["ident"];
-		$send["host"] = $GLOBALS["state"]["%servers%"]["local"][(int)$fd]["host"] = $sockname;
-		$send["num"] = $GLOBALS["state"]["%servers%"]["local"][(int)$fd]["num"] = (int)$fd;
-		$send["uplink"] = $GLOBALS["state"]["%servers%"]["local"][(int)$fd]["server"] = $GLOBALS["state"]["%servers%"];
+		$send["ts"]  = $d["ts"];
+		// Nick collision time.
+		// If we know of a $d["nick"], we should check the TSes.
+		// If ours is lower, kill theirs.
+		// Todo: Server TS
+		$send["nick"] = $d["nick"];
+		$send["ident"] = $d["ident"];
+		$send["host"] = $d["host"];
+		$send["dhost"] = $d["dhost"];
+		$send["num"] = (int)$fd;
+		$send["uplink"] = $state["%servers%"]["fd"];
 		$this->sendto_allbutone_type($fd,TYPE_OPER|TYPE_SERVER,$send);
 	}
 	
